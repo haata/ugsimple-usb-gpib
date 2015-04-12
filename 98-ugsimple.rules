@@ -1,0 +1,3 @@
+# UGSimple USB GPIB Adapter
+SUBSYSTEM=="usb", ATTR{idVendor}=="04d8", ATTR{idProduct}=="000c", MODE:="0666"
+
