@@ -24,13 +24,17 @@ from ugsimple.GPIB import UGSimpleGPIB
 ### Program Entry Point ###
 
 if __name__ == '__main__':
+	# Initialize the UGSimpleGPIB USB adapter
+	# Requires root permissions (or add the udev rule)
 	mygpib = UGSimpleGPIB()
 	#mygpib = UGSimpleGPIB(debug_mode=True)
 
+	# Firmware / Device Information
 	print ( mygpib.firmware_version() )
 	print ( mygpib.manufacturer_id() )
 	print ( mygpib.series_number() )
 
+	# GPIB Commands
 	#print ( mygpib.write( 0x02, "*CLS" ) )
 	#print ( mygpib.write( 0x03, ":data:fresh?" ) )
 	#mygpib.write( 0x02, "*ESE?" )
