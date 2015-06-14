@@ -34,6 +34,9 @@ if __name__ == '__main__':
 	print ( mygpib.manufacturer_id() )
 	print ( mygpib.series_number() )
 
+	# List Connected Devices
+	print( mygpib.query_devices() )
+
 	# GPIB Commands
 	#print ( mygpib.write( 0x02, "*CLS" ) )
 	#print ( mygpib.write( 0x03, ":data:fresh?" ) )

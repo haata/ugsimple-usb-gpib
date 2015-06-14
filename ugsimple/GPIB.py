@@ -153,7 +153,7 @@ class UGSimpleGPIB:
 			byteData.append( byte )
 
 		if self.debug_mode:
-			print ( byteData )
+			print ( "WRITE:", byteData )
 
 		# Write command over usb
 		self.usb_write( byteData )
@@ -167,19 +167,19 @@ class UGSimpleGPIB:
 			return None
 
 		if self.debug_mode:
-			print ( command )
+			print ( "READ CMD:", command )
 
 		# Valid command, read next byte to determine length of command
 		length = self.usb_read()[0]
 
 		if self.debug_mode:
-			print ( length )
+			print ( "READ LEN:", length )
 
 		# Read the rest of the byteData, the command and length are part of the length (hence -2)
 		byteData = self.usb_read( length - 2 )
 
 		if self.debug_mode:
-			print ( byteData )
+			print ( "READ DATA:", byteData )
 
 		return byteData
 
@@ -193,7 +193,7 @@ class UGSimpleGPIB:
 		byteData = self.device_read( 0xFE )
 
 		if self.debug_mode:
-			print ( byteData )
+			print ( "MANUFACTURER ID:", byteData )
 
 		# Flush read, bug in manufacturer_id command that sends an extra 0xAF in Firmware 1.0
 		self.usb_read_buf = array('B', [])
@@ -213,7 +213,7 @@ class UGSimpleGPIB:
 		byteData = self.device_read( 0x0E )
 
 		if self.debug_mode:
-			print ( byteData )
+			print ( "SERIAL NUM:", byteData )
 
 		return ''.join( [ "{0:02x}".format( x ) for x in byteData ] )
 
@@ -227,9 +227,29 @@ class UGSimpleGPIB:
 		byteData = self.device_read( 0x00 )
 
 		if self.debug_mode:
-			print ( byteData )
+			print ( "FIRWMARE VER:", byteData )
 
 		return "{0}.{1}".format( byteData[0], byteData[1] )
+
+	# Query Devices connected to UGSimple
+	def query_devices( self ):
+		# Device query command
+		self.device_write( 0x34 )
+
+		# Read list of devices
+		byteData = self.device_read( 0x34 )
+
+		# XXX Not sure what the last byte is for
+		# One device  0x1E
+		# Two devices 0x7F
+		# Stripping for now
+		byteData = byteData[:-1]
+
+		if self.debug_mode:
+			print ( "DEVICES:", byteData )
+
+		return byteData
+
 
 	# Write to GPIB Address
 	# address - GPIB Address
