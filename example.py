@@ -38,14 +38,17 @@ if __name__ == '__main__':
 	print( mygpib.query_devices() )
 
 	# GPIB Commands
-	#print ( mygpib.write( 0x02, "*CLS" ) )
-	#print ( mygpib.write( 0x03, ":data:fresh?" ) )
-	#mygpib.write( 0x02, "*ESE?" )
-	#mygpib.write( 0x02, "*ESE" )
-	#mygpib.write( 0x03, "*IDN?" )
-	#print ( mygpib.read( 0x03 ) )
-	#print ( mygpib.read( 0x02 ) )
-	#print ( mygpib.read( 0x02 ) )
-	#print ( mygpib.read( 0x03 ) )
+	# WaveTek 278 - GPIB Address 0x9
+	# Set Frequency to 79 kHz
+	mygpib.write( 0x9, "F79000I" )
+	# Enable Output
+	mygpib.write( 0x9, "P1I" )
 
+	# Set Talker register to Version Info
+	mygpib.write( 0x9, "XT5" )
+	# Read Version Info
+	print ( mygpib.read( 0x9 ) )
+
+	# Set display
+	mygpib.write( 0x9, "'UGSimple Test'" )
 

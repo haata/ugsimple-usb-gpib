@@ -17,6 +17,8 @@
 
 ### Imports ###
 
+import binascii
+import time
 import usb.core
 
 from array import array
@@ -250,43 +252,50 @@ class UGSimpleGPIB:
 
 		return byteData
 
-
 	# Write to GPIB Address
 	# address - GPIB Address
 	# data    - Data to write to address
 	def write( self, address, data="" ):
 		# Prepare data with appended linefeed (LF)
-		#dataOut = bytearray( [ address ] )
-		#dataOut = bytearray( [ address ] ) + bytearray( data, 'ascii' )
 		dataOut = bytearray( [ address ] ) + bytearray( data, 'ascii' ) + bytearray( [ 0xA ] )
 
 		if self.debug_mode:
-			print ( dataOut )
+			print ( "WRITE CMD:", dataOut )
 
 		# Send write command (no return)
-		self.device_write( 0x33, dataOut )
-		# TODO RS 0x1E 30 is sent (record separator)
-		self.usb_read_buf = array('B', [])
-		byteData = self.device_read( 0x33 )
-		self.usb_read_buf = array('B', [])
-		byteData = self.device_read( 0x33 )
+		self.device_write( 0x32, dataOut )
 
 	# Read from GPIB Address
 	# address - GPIB Address
 	# Returns a byte array
-	def read( self, address ):
-		# Request read
-		self.device_write( 0x33 )
+	def read( self, address, delay=0 ):
+		# Prepare read request command
+		dataOut = bytearray( [ address ] )
 
-		# TODO, query until address is found
+		if self.debug_mode:
+			print ( "READ REQ:", dataOut )
+
+		# Request read
+		self.device_write( 0x33, dataOut )
+
+		# Delay if necessary
+		time.sleep( delay )
+
+		# Flush read buffer
+		self.usb_read()
+
 		# Read data sent from GPIB device
 		byteData = self.device_read( 0x33 )
 
-		if self.debug_mode:
-			print ( byteData )
+		# Strip final linefeed
+		byteData = byteData[:-1]
 
-		# TODO RS 0x1E 30 is sent (record separator)
-		self.usb_read_buf = array('B', [])
+		# Convert to an ascii byte array
+		#byteData = bytearray( byteData, 'ascii' )
+		byteData = binascii.b2a_qp( byteData )
+
+		if self.debug_mode:
+			print ( "READ REPLY:", byteData )
 
 		return byteData
 
