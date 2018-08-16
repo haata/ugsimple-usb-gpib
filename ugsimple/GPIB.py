@@ -28,7 +28,7 @@ from array import array
 ### Classes ###
 
 class UGSimpleGPIB:
-	def __init__( self, device_index=0, debug_mode=False, timeout=None ):
+	def __init__( self, device_index=0, debug_mode=False, timeout=30000 ):
 		# Enumeration index of the USB device
 		# This matters if there is more than one GPIB to USB adapter plugged in
 		self.device_index = device_index
@@ -95,7 +95,16 @@ class UGSimpleGPIB:
 			print ( self.read_ep )
 			print ( self.write_ep )
 
-	def _device_matcher( self, device ):
+        def reinit_buffer(self):
+                #print('FLUSHING: {}'.format(self.usb_read_buf))
+                # Initialize usb read buffer
+                self.usb_read_buf = array('B', [])
+                try:
+                    self.read_ep.read( 64, timeout=500)
+                except:
+                    pass
+
+        def _device_matcher( self, device ):
 		import usb.util
 		# Make sure that a Vendor Specific Interface is found in the configuration
 		# bInterfaceClass    0xff
@@ -128,6 +137,8 @@ class UGSimpleGPIB:
 	# data - List of bytes to write
 	def usb_write( self, data ):
 		assert self.write_ep.write( data, self.timeout ) == len( data )
+                if self.debug_mode:
+		    print (self.write_ep)
 
 	# Read byte(s) from USB endpoint
 	# datalen - Number of bytes to read
@@ -144,6 +155,23 @@ class UGSimpleGPIB:
 		data = self.usb_read_buf[0:datalen]
 		del self.usb_read_buf[0:datalen]
 		return data
+
+
+        # This method does the same thing as usb_read() except it doesn't
+        # concern itself with the buffer arithmetic. It purely just returns whatever the
+        # instrument spits out
+        def usb_read_all(self):
+                buf = array('B', [])
+                # Read USB in 64 byte chunks, store bytes until empty, then read again
+                while len( buf ) < 1: 
+                        buf += self.read_ep.read( 64, self.timeout )
+
+                if self.debug_mode:
+                        print ( buf, len( buf ) )
+
+                data = buf
+                return data
+
 
 	# Write UGSimple command
 	# address - internal command address
@@ -163,17 +191,20 @@ class UGSimpleGPIB:
 	# Read UGSimple command
 	def device_read( self, address ):
 		# Read USB a single byte to see if a valid command has been received
-		command = self.usb_read()[0]
+		read = self.usb_read(1)
+                command = read[0]
+                print ("READ:", read, " ADDRESS:", address)
 		if command != address:
-			print ("ERROR: '0x{0:2x}' does not match expected command '0x{0:2x}".format( command, address ) )
-			return None
+			print ("device_read ERROR: '0x{0:2x}' does not match expected command '0x{0:2x}'".format( command, address ) )
+                        print (self.usb_read())
+		        return None
 
 		if self.debug_mode:
 			print ( "READ CMD:", command )
 
 		# Valid command, read next byte to determine length of command
-		length = self.usb_read()[0]
-
+		length = self.usb_read(1)[0]
+                        
 		if self.debug_mode:
 			print ( "READ LEN:", length )
 
@@ -269,6 +300,13 @@ class UGSimpleGPIB:
 	# address - GPIB Address
 	# Returns a byte array
 	def read( self, address, delay=0 ):
+                # (muxr) this method is problematic
+                # the way it flushes the buffer and depends on buffer length arithmetic
+                # can cause it to desync depending on the underlying USB subsystem
+                # I have instead written a new method which doesn't rely on a living
+                # buffer, and instead just reads everything from the buffer. 
+                # See _ask_retry() and _ask_quorum() methods
+
 		# Prepare read request command
 		dataOut = bytearray( [ address ] )
 
@@ -285,10 +323,20 @@ class UGSimpleGPIB:
 		self.usb_read()
 
 		# Read data sent from GPIB device
-		byteData = self.device_read( 0x33 )
+                byteData = None
+                while byteData == None:
+		    byteData = self.device_read( 0x33 )
+
+
+                # Flush read buffer
+                #self.usb_read()
+
 
 		# Strip final linefeed
-		byteData = byteData[:-1]
+                try:
+		    byteData = byteData[:-1]
+                except TypeError:
+                    byteData = ''
 
 		# Convert to an ascii byte array
 		#byteData = bytearray( byteData, 'ascii' )
@@ -299,3 +347,72 @@ class UGSimpleGPIB:
 
 		return byteData
 
+
+
+        def _ask(self, address, data):
+                self.write(address, data)
+
+                data_out = bytearray([address])
+                self.device_write(0x33, data_out)
+
+                ret = self.usb_read_all()
+                # usb_read_all will return everything
+                # the first two bytes contain the address
+                # and length.. we will strip these as we
+                # don't need them
+                ret = binascii.b2a_qp(ret[2:])
+                return ret
+
+
+        # For instruments which return a delimiter.. the delimiter can be used
+        # to check if the returned result is valid. 
+        # retry can be used and be based on the expected delimiter
+        #    address: interface address
+        #    data: command to execute
+        #    delimiter: which delimiter to expect
+        #    max_retries: how many retries to make
+        def _ask_retry(self, address, cmd, delimiter='\r\n', max_retries=10, num_reads=10):
+                for i in range(max_retries):
+                        res = self._ask(address, cmd)
+                        if res.endswith(delimiter):
+                                return res[:-2]
+                        else:
+                                print('unexpected result: {}={}'.format(i, res))
+
+        # With devices which don't have a known delimiter it is possible to attempt
+        # a number of retries and return the most common result.
+        # this works well for queries which result in finite result, things like backing up
+        # NVRAM, but obviously not measurements since those fluctuate.
+        # This method is also quite slow.
+        #    address: interface address
+        #    cmd: command to execute
+        #    num_reads: number of separate reads to make
+        def _ask_quorum(self, address, cmd, delimiter='\r\n', max_retries=10, num_reads=10):
+                reads = {}
+                for i in range(num_reads):
+                    res = self._ask(address, cmd)
+                    # tally how many results are the same
+                    if res in reads:
+                        reads[res] = reads[res] + 1
+                    else:
+                        reads[res] = 1
+
+                for k, v in reads.items():
+                    # only accept the majority result
+                    if v > (num_reads/2):
+                        if v <> num_reads:
+                            print('{} result was off: {}'.format(num_reads - v, reads))
+                        return k
+                print('ERROR: no quorum reached {}'.format(reads))
+
+
+        # Instead of using separate write() and read() you can do both at the same time with ask()
+        # this method is also less problematic than the read() method which I have found to have some
+        # issues with certain instruments
+        #    address: interface address
+        #    cmd: command to be sent to the device
+        #    methos: retry or quorum 
+        def ask(self, address, cmd, method='retry', delimiter='\r\n', max_retries=10, num_reads=10):
+                method_to_call = getattr(self,'_ask_' + method)
+                return method_to_call(address, cmd, delimiter, max_retries, num_reads)
+                 
