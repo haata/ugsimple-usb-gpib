@@ -37,6 +37,12 @@ data = mygpib.read( 0x02 )
 print ( data )
 ```
 
+Writting and reading the returned result using the ask() method
+```python
+device_id = mygpib.ask( 0x02, 'ID?' )
+print ( device_id )
+```
+
 See ugsimple/GPIB.py for further documentation.
 
 
